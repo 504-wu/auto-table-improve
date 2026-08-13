@@ -56,7 +56,6 @@ def get_photo_date(image_bytes, file_name):
 def resize_and_compress_image(image_bytes, date_str, is_from_exif):
     """
     處理照片尺寸與浮水印：
-    【嚴格對齊縮進版】修正 IndentationError，確保縮放與幾何手繪邏輯結構完全對齊。
     """
     raw_img = Image.open(io.BytesIO(image_bytes))
     
@@ -66,14 +65,14 @@ def resize_and_compress_image(image_bytes, date_str, is_from_exif):
     if img.mode in ("RGBA", "P"):
         img = img.convert("RGB")
         
-    # 定義 300 DPI 下的大格子標準規格
+    # 定義格子標準規格
     target_pixel_w = 945  # 8.0cm 對應像素
     target_ratio = 8.0 / 6.15
     target_pixel_h = 726  # 726 像素 (6.15cm，安全高度)
     
     img_w, img_h = img.size
     
-    # --- 第一步：先裁剪縮小照片到 945x726 ---
+    # 先裁剪縮小照片
     if img_w < img_h:
         new_w = target_pixel_w
         new_h = int(img_h * (target_pixel_w / img_w))
@@ -93,26 +92,24 @@ def resize_and_compress_image(image_bytes, date_str, is_from_exif):
             img = img.crop((0, offset, img_w, img_h - offset))
         img = img.resize((target_pixel_w, target_pixel_h), Image.Resampling.LANCZOS)
 
-    # --- 第二步：使用安全字串幾何線條直接「畫」出清晰大數字 ---
+    # 使用字串幾何線條直接產生字體
     if not is_from_exif:
         draw = ImageDraw.Draw(img)
         w, h = img.size  # w=945, h=726
         
-        # 幾何外觀大小定死（在 945 寬度下，這尺寸非常醒目）
-        num_w = 24   # 每個數字的像素寬度
-        num_h = 44   # 每個數字的像素高度
-        thick = 5    # 數字筆畫粗細
-        spacing = 10 # 數字之間的間距
+        num_w = 23   # 數字的像素寬度
+        num_h = 43   # 數字的像素高度
+        thick = 4    # 數字筆畫粗細
+        spacing = 8 # 數字間距
         
-        # 靠右下角對齊的起點 X 座標
+        # 右下角的 X 座標起點
         start_x = w - (len(date_str) * (num_w + spacing)) - 40
-        y = h - num_h - 40  # 距離底部 40 像素
-        
-        # 正向一個字一個字直接畫在照片上
+        y = h - num_h - 40 
+    
         for i, char in enumerate(date_str):
             cx = start_x + (i * (num_w + spacing))
             
-            # 建立此字元的線條清單
+            # 建立此字元的線條
             lines = []
             if char == "/":
                 lines.append((cx, y + num_h, cx + num_w, y))
@@ -135,11 +132,11 @@ def resize_and_compress_image(image_bytes, date_str, is_from_exif):
                 if s in "2345689": # 中間橫線
                     lines.append((cx, y + num_h // 2, cx + num_w, y + num_h // 2))
 
-            # 1. 畫底層超黑邊 (外加粗 5 像素)
+            # 畫底層黑邊
             for x1, y1, x2, y2 in lines:
-                draw.line([(x1, y1), (x2, y2)], fill="black", width=thick + 5)
+                draw.line([(x1, y1), (x2, y2)], fill="black", width=thick + 4)
                 
-            # 2. 畫上層正白字 (核心粗度 5 像素)
+            # 畫上層白字
             for x1, y1, x2, y2 in lines:
                 draw.line([(x1, y1), (x2, y2)], fill="white", width=thick)
 
