@@ -109,21 +109,19 @@ def resize_and_compress_image(image_bytes, date_str, is_from_exif):
             font = ImageFont.truetype("msjh.ttc", font_size)  # 微軟正黑體
         except IOError:
             try:
-                font = ImageFont.truetype("Arial.ttf", font_size)
+                font = ImageFont.truetype("msjh.ttc", font_size)
             except IOError:
                 font = ImageFont.load_default()
 
         # 計算文字寬高
         try:
-            text_bbox = draw.textbbox((0, 0), date_str, font=font)
-            text_w = text_bbox[2] - text_bbox[0]
-            text_h = text_bbox[3] - text_bbox[1]
+            text_w, text_h = font.getsize(date_str)
         except AttributeError:
             text_w, text_h = draw.textsize(date_str, font=font)
             
         # 右下角留邊
-        x = w - text_w - 25
-        y = h - text_h - 25
+        x = w - text_w - 40
+        y = h - text_h - 40
         
         # 繪製黑邊
         border_thickness = 3
