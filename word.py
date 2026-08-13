@@ -77,20 +77,15 @@ def resize_and_compress_image(image_bytes, date_str, is_from_exif):
     
     # 先進行裁切與基礎縮放 
     if img_w < img_h:
-        # 直式照片置中裁切不填滿
         new_w = target_pixel_w
         new_h = int(img_h * (target_pixel_w / img_w))
+        img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
         
         if new_h > target_pixel_h:
-            # 採用置中裁切
-            img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
             offset_y = (new_h - target_pixel_h) // 2
             img = img.crop((0, offset_y, target_pixel_w, offset_y + target_pixel_h))
-        else:
-            # 若高度沒超標，就直接等比例縮小即可
-            img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
     else:
-        # 橫式照片照舊：置中裁切並縮放
+        # 橫式照片置中裁切
         current_ratio = img_w / img_h
         if current_ratio > target_ratio:
             crop_w = int(target_ratio * img_h)
@@ -102,13 +97,13 @@ def resize_and_compress_image(image_bytes, date_str, is_from_exif):
             img = img.crop((0, offset, img_w, img_h - offset))
         img = img.resize((target_pixel_w, target_pixel_h), Image.Resampling.LANCZOS)
 
-    # 在標準化尺寸後，繪製固定大小的字體
+    # 標準化尺寸後，固定大小的字體
     if not is_from_exif:
         draw = ImageDraw.Draw(img)
         w, h = img.size
         
         #字體大小
-        font_size = 100 
+        font_size = 45 
         
         try:
             font = ImageFont.truetype("msjh.ttc", font_size)  # 微軟正黑體
@@ -127,8 +122,8 @@ def resize_and_compress_image(image_bytes, date_str, is_from_exif):
             text_w, text_h = draw.textsize(date_str, font=font)
             
         # 右下角留邊
-        x = w - text_w - 30
-        y = h - text_h - 30
+        x = w - text_w - 25
+        y = h - text_h - 25
         
         # 繪製黑邊
         border_thickness = 3
