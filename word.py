@@ -97,8 +97,8 @@ def resize_and_compress_image(image_bytes, date_str, is_from_exif):
         draw = ImageDraw.Draw(img)
         w, h = img.size  # w=945, h=726
         
-        num_w = 23   # 數字的像素寬度
-        num_h = 43   # 數字的像素高度
+        num_w = 15   # 數字的像素寬度
+        num_h = 35   # 數字的像素高度
         thick = 4    # 數字筆畫粗細
         spacing = 8 # 數字間距
         
