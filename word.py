@@ -250,7 +250,7 @@ def create_report(grouped_photos):
                             photo_data['is_from_exif']
                         )
                         run_img = p_para.add_run()
-                        run_img.add_picture(compressed_io, width=Cm(8.0))
+                        run_img.add_picture(compressed_io, width=Cm(8.0), height=Cm(6.15))
                         
                         s_para.add_run(photo_data.get('note', ''))
                     else:
