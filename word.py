@@ -71,7 +71,7 @@ def resize_and_compress_image(image_bytes, date_str, is_from_exif):
         
     target_pixel_w = 945  # 8.0cm 對應pixel (300 DPI)
     target_ratio = 8.0 / 6.15
-    target_pixel_h = int(target_pixel_w / target_ratio)  # 726 像素 (約 6.15cm，安全高度)
+    target_pixel_h = 726
     
     img_w, img_h = img.size
     
@@ -108,7 +108,7 @@ def resize_and_compress_image(image_bytes, date_str, is_from_exif):
         w, h = img.size
         
         #  300 DPI 下，10 Pt 的字體大小固定為 42 pixels
-        font_size = 42 
+        font_size = 50 
         
         try:
             font = ImageFont.truetype("msjh.ttc", font_size)  # 微軟正黑體
@@ -127,8 +127,8 @@ def resize_and_compress_image(image_bytes, date_str, is_from_exif):
             text_w, text_h = draw.textsize(date_str, font=font)
             
         # 右下角留邊
-        x = w - text_w - 20
-        y = h - text_h - 20
+        x = w - text_w - 30
+        y = h - text_h - 30
         
         # 繪製黑邊
         border_thickness = 3
