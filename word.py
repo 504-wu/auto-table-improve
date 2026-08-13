@@ -5,7 +5,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT, WD_ALIGN_VERTICAL
 from docx.oxml import OxmlElement, parse_xml
 from docx.oxml.ns import nsdecls, qn
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 from PIL.ExifTags import TAGS
 import pillow_heif
 import io
@@ -56,84 +56,88 @@ def get_photo_date(image_bytes, file_name):
 def resize_and_compress_image(image_bytes, date_str, is_from_exif):
     """
     處理照片尺寸與浮水印：
-    - 橫式照片：維持置中裁切，填滿格子。
-    - 直式照片：等比例縮放（不旋轉也不硬切成橫式）。
-    - 無時間的照片：在右下角增加日期文字。
+    - 自動修正手機拍攝時的 EXIF 旋轉問題。
+    - 橫式照片：置中裁切填滿。
+    - 直式照片：等比例縮放且限制高度不超出儲存格。
+    - 調整尺寸後：若無原生時間，在右下角新增時間文字。
     """
-    img = Image.open(io.BytesIO(image_bytes))
+    raw_img = Image.open(io.BytesIO(image_bytes))
+    
+    # 讀取手機 EXIF 的旋轉資訊並將照片轉正
+    img = ImageOps.exif_transpose(raw_img)
+    
     if img.mode in ("RGBA", "P"):
         img = img.convert("RGB")
         
-    img_w, img_h = img.size
+    target_pixel_w = 945  # 8.0cm 對應pixel (300 DPI)
     target_ratio = 8.0 / 6.15
+    target_pixel_h = int(target_pixel_w / target_ratio)  # 726 像素 (約 6.15cm，安全高度)
     
-    # 判斷直式（寬 < 高）或橫式
+    img_w, img_h = img.size
+    
+    # 先進行裁切與基礎縮放 
     if img_w < img_h:
-        # 直式照片：等比例縮放至寬度 8cm，並裁切高度以符合 8:6.15 比例
-        new_w = img_w
-        new_h = int(img_w / target_ratio)
-        # 縮放後的高度會高於原照片，則以高度為準調整
-        if new_h > img_h:
-            new_h = img_h
-            new_w = int(img_h * target_ratio)
+        # 直式照片置中裁切不填滿
+        new_w = target_pixel_w
+        new_h = int(img_h * (target_pixel_w / img_w))
         
-        # 進行縮放裁切
-        offset_x = (img_w - new_w) // 2
-        offset_y = (img_h - new_h) // 2
-        img = img.crop((offset_x, offset_y, img_w - offset_x, img_h - offset_y))
+        if new_h > target_pixel_h:
+            # 採用置中裁切
+            img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+            offset_y = (new_h - target_pixel_h) // 2
+            img = img.crop((0, offset_y, target_pixel_w, offset_y + target_pixel_h))
+        else:
+            # 若高度沒超標，就直接等比例縮小即可
+            img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
     else:
-        # 橫式照片：裁切至 8:6.15 比例
+        # 橫式照片照舊：置中裁切並縮放
         current_ratio = img_w / img_h
         if current_ratio > target_ratio:
-            new_w = int(target_ratio * img_h)
-            offset = (img_w - new_w) // 2
+            crop_w = int(target_ratio * img_h)
+            offset = (img_w - crop_w) // 2
             img = img.crop((offset, 0, img_w - offset, img_h))
         elif current_ratio < target_ratio:
-            new_h = int(img_w / target_ratio)
-            offset = (img_h - new_h) // 2
+            crop_h = int(img_w / target_ratio)
+            offset = (img_h - crop_h) // 2
             img = img.crop((0, offset, img_w, img_h - offset))
+        img = img.resize((target_pixel_w, target_pixel_h), Image.Resampling.LANCZOS)
 
-    # 無時間照片，在右下角加上時間
+    # 在標準化尺寸後，繪製固定大小的字體
     if not is_from_exif:
         draw = ImageDraw.Draw(img)
         w, h = img.size
         
-        # 根據照片寬度決定字體大小
-        font_size = max(20, int(w * 0.04))
+        #  300 DPI 下，10 Pt 的字體大小固定為 42 pixels
+        font_size = 42 
         
-        # 載入系統預設字型，若找不到則用 PIL 內建
         try:
-            
-            font = ImageFont.truetype("msjh.ttc", font_size)
+            font = ImageFont.truetype("msjh.ttc", font_size)  # 微軟正黑體
         except IOError:
             try:
-                
                 font = ImageFont.truetype("Arial.ttf", font_size)
             except IOError:
                 font = ImageFont.load_default()
 
-        # 計算文字寬高以放置在右下角
-        # 使用相容的 textbbox  或 textsize 
+        # 計算文字寬高
         try:
-            text_w = draw.textbbox((0, 0), date_str, font=font)[2]
-            text_h = draw.textbbox((0, 0), date_str, font=font)[3]
+            text_bbox = draw.textbbox((0, 0), date_str, font=font)
+            text_w = text_bbox[2] - text_bbox[0]
+            text_h = text_bbox[3] - text_bbox[1]
         except AttributeError:
             text_w, text_h = draw.textsize(date_str, font=font)
             
-        # 設定右下角座標
-        margin_x = int(w * 0.05)
-        margin_y = int(h * 0.05)
-        x = w - text_w - margin_x
-        y = h - text_h - margin_y
+        # 右下角留邊
+        x = w - text_w - 20
+        y = h - text_h - 20
         
-        # 繪製文字黑邊
-        border_thickness = max(1, int(font_size * 0.08))
+        # 繪製黑邊
+        border_thickness = 3
         for dx in range(-border_thickness, border_thickness + 1):
             for dy in range(-border_thickness, border_thickness + 1):
                 if dx != 0 or dy != 0:
                     draw.text((x + dx, y + dy), date_str, font=font, fill="black")
                     
-        # 繪製白字
+        # 繪製主體白字
         draw.text((x, y), date_str, font=font, fill="white")
 
     out_io = io.BytesIO()
