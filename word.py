@@ -56,36 +56,32 @@ def get_photo_date(image_bytes, file_name):
 def resize_and_compress_image(image_bytes, date_str, is_from_exif):
     """
     處理照片尺寸與浮水印：
-    - 自動修正手機拍攝時的 EXIF 旋轉問題。
-    - 橫式照片：置中裁切填滿。
-    - 直式照片：等比例縮放且限制高度不超出儲存格。
-    - 調整尺寸後：若無原生時間，在右下角新增時間文字。
+    【嚴格對齊縮進版】修正 IndentationError，確保縮放與幾何手繪邏輯結構完全對齊。
     """
     raw_img = Image.open(io.BytesIO(image_bytes))
     
-    # 讀取手機 EXIF 的旋轉資訊並將照片轉正
+    # 自動讀取手機 EXIF 的旋轉資訊並將照片轉正
     img = ImageOps.exif_transpose(raw_img)
     
     if img.mode in ("RGBA", "P"):
         img = img.convert("RGB")
         
-    target_pixel_w = 945  # 8.0cm 對應pixel (300 DPI)
+    # 定義 300 DPI 下的大格子標準規格
+    target_pixel_w = 945  # 8.0cm 對應像素
     target_ratio = 8.0 / 6.15
-    target_pixel_h = 726
+    target_pixel_h = 726  # 726 像素 (6.15cm，安全高度)
     
     img_w, img_h = img.size
     
-    # 先進行裁切與基礎縮放 
+    # --- 第一步：先裁剪縮小照片到 945x726 ---
     if img_w < img_h:
         new_w = target_pixel_w
         new_h = int(img_h * (target_pixel_w / img_w))
         img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
-        
         if new_h > target_pixel_h:
             offset_y = (new_h - target_pixel_h) // 2
             img = img.crop((0, offset_y, target_pixel_w, offset_y + target_pixel_h))
     else:
-        # 橫式照片置中裁切
         current_ratio = img_w / img_h
         if current_ratio > target_ratio:
             crop_w = int(target_ratio * img_h)
@@ -97,16 +93,16 @@ def resize_and_compress_image(image_bytes, date_str, is_from_exif):
             img = img.crop((0, offset, img_w, img_h - offset))
         img = img.resize((target_pixel_w, target_pixel_h), Image.Resampling.LANCZOS)
 
-    # 標準化尺寸後，固定大小的字體
-     if not is_from_exif:
+    # --- 第二步：使用安全字串幾何線條直接「畫」出清晰大數字 ---
+    if not is_from_exif:
         draw = ImageDraw.Draw(img)
         w, h = img.size  # w=945, h=726
         
-        # 🚨【字體外觀大小定死】
-        num_w = 24  # 每個數字的物理像素寬度 (拉寬到 24 像素，字體會非常有分量)
-        num_h = 44  # 每個數字的物理像素高度 (拉高到 44 像素)
-        thick = 5   # 數字筆畫粗細 (5像素，超粗超清楚)
-        spacing = 10 # 數字與數字之間的間距
+        # 幾何外觀大小定死（在 945 寬度下，這尺寸非常醒目）
+        num_w = 24   # 每個數字的像素寬度
+        num_h = 44   # 每個數字的像素高度
+        thick = 5    # 數字筆畫粗細
+        spacing = 10 # 數字之間的間距
         
         # 靠右下角對齊的起點 X 座標
         start_x = w - (len(date_str) * (num_w + spacing)) - 40
@@ -119,13 +115,11 @@ def resize_and_compress_image(image_bytes, date_str, is_from_exif):
             # 建立此字元的線條清單
             lines = []
             if char == "/":
-                # 畫斜線
                 lines.append((cx, y + num_h, cx + num_w, y))
             else:
-                # 🚨【安全字串比對法】完全不使用中括號，防範傳輸被吃代碼
                 s = str(char)
                 
-                # 判斷哪些數字需要繪製對應位置的筆畫
+                # 判斷哪些數字需要辨識並繪製對應位置的筆畫
                 if s in "02356789": # 上橫線
                     lines.append((cx, y, cx + num_w, y))
                 if s in "01234789": # 右上直線
@@ -141,7 +135,7 @@ def resize_and_compress_image(image_bytes, date_str, is_from_exif):
                 if s in "2345689": # 中間橫線
                     lines.append((cx, y + num_h // 2, cx + num_w, y + num_h // 2))
 
-            # 1. 畫底層超黑邊 (外加粗 5 像素，確保任何背景都看得到)
+            # 1. 畫底層超黑邊 (外加粗 5 像素)
             for x1, y1, x2, y2 in lines:
                 draw.line([(x1, y1), (x2, y2)], fill="black", width=thick + 5)
                 
