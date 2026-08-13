@@ -115,9 +115,12 @@ def resize_and_compress_image(image_bytes, date_str, is_from_exif):
 
         # 計算文字寬高
         try:
-            text_w, text_h = font.getsize(date_str)
+            text_bbox = font.getmask(date_str).getbbox()
+            text_w = text_bbox[2] - text_bbox[0]
+            text_h = text_bbox[3] - text_bbox[1]
         except AttributeError:
-            text_w, text_h = draw.textsize(date_str, font=font)
+            text_w = font_size * 5
+            text_h = font_siz
             
         # 右下角留邊
         x = w - text_w - 40
