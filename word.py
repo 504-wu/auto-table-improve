@@ -107,8 +107,8 @@ def resize_and_compress_image(image_bytes, date_str, is_from_exif):
         draw = ImageDraw.Draw(img)
         w, h = img.size
         
-        #  300 DPI 下，10 Pt 的字體大小固定為 42 pixels
-        font_size = 50 
+        #字體大小
+        font_size = 100 
         
         try:
             font = ImageFont.truetype("msjh.ttc", font_size)  # 微軟正黑體
