@@ -103,7 +103,7 @@ def resize_and_compress_image(image_bytes, date_str, is_from_exif):
         w, h = img.size
         
         #字體大小
-        font_size = 45 
+        font_size = 65 
         
         try:
             font = ImageFont.truetype("msjh.ttc", font_size)  # 微軟正黑體
@@ -113,28 +113,26 @@ def resize_and_compress_image(image_bytes, date_str, is_from_exif):
             except IOError:
                 font = ImageFont.load_default()
 
-        # 計算文字寬高
-        try:
-            text_bbox = font.getmask(date_str).getbbox()
-            text_w = text_bbox[2] - text_bbox[0]
-            text_h = text_bbox[3] - text_bbox[1]
-        except AttributeError:
-            text_w = font_size * 5
-            text_h = font_siz
-            
-        # 右下角留邊
-        x = w - text_w - 40
-        y = h - text_h - 40
+ # 🚨【正向固定起點邏輯】
+        # 在總寬度 945 像素中，"2026/08/13" 這類字串長度大約 280 像素。
+        # 我們直接把起點固定在 x = 620，這樣文字既能靠右，又絕對有足夠的空間順著往右印完！
+        start_x = 620
+        char_spacing = 28  # 順著印的字元前進間距
+        y = h - font_size - 35  # 距離底部的安全高度
         
-        # 繪製黑邊
-        border_thickness = 3
-        for dx in range(-border_thickness, border_thickness + 1):
-            for dy in range(-border_thickness, border_thickness + 1):
-                if dx != 0 or dy != 0:
-                    draw.text((x + dx, y + dy), date_str, font=font, fill="black")
-                    
-        # 繪製主體白字
-        draw.text((x, y), date_str, font=font, fill="white")
+        # 順著時間字串從頭到尾（例如 "2", "0", "2", "6" ...）往右印
+        for i, char in enumerate(date_str):
+            current_x = start_x + (i * char_spacing)
+            
+            # 繪製黑邊（厚度 3 像素）
+            border = 3
+            for dx in range(-border, border + 1):
+                for dy in range(-border, border + 1):
+                    if dx != 0 or dy != 0:
+                        draw.text((current_x + dx, y + dy), char, font=font, fill="black")
+                        
+            # 繪製主體白字
+            draw.text((current_x, y), char, font=font, fill="white")
 
     out_io = io.BytesIO()
     img.save(out_io, format="JPEG", quality=95, dpi=(300, 300))
