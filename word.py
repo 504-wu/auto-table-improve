@@ -100,39 +100,51 @@ def resize_and_compress_image(image_bytes, date_str, is_from_exif):
     # 標準化尺寸後，固定大小的字體
     if not is_from_exif:
         draw = ImageDraw.Draw(img)
-        w, h = img.size
+        w, h = img.size  # w=945, h=726
         
-        #字體大小
-        font_size = 65 
+        # 固定每個數字的幾何規格
+        num_w = 16  # 每個數字的物理像素寬度
+        num_h = 36  # 每個數字的物理像素高度
+        thick = 4   # 數字筆畫粗細（4像素，極粗顯眼）
+        spacing = 8 # 數字之間的間距
         
-        try:
-            font = ImageFont.truetype("msjh.ttc", font_size)  # 微軟正黑體
-        except IOError:
-            try:
-                font = ImageFont.truetype("msjh.ttc", font_size)
-            except IOError:
-                font = ImageFont.load_default()
-
- # 🚨【正向固定起點邏輯】
-        # 在總寬度 945 像素中，"2026/08/13" 這類字串長度大約 280 像素。
-        # 我們直接把起點固定在 x = 620，這樣文字既能靠右，又絕對有足夠的空間順著往右印完！
-        start_x = 620
-        char_spacing = 28  # 順著印的字元前進間距
-        y = h - font_size - 35  # 距離底部的安全高度
+        # 靠右下角對齊的起點 X
+        start_x = w - (len(date_str) * (num_w + spacing)) - 30
+        y = h - num_h - 35  # 距離底部 35 像素
         
-        # 順著時間字串從頭到尾（例如 "2", "0", "2", "6" ...）往右印
+        # 七段顯示器幾何線條定義
         for i, char in enumerate(date_str):
-            current_x = start_x + (i * char_spacing)
+            cx = start_x + i * (num_w + spacing)
             
-            # 繪製黑邊（厚度 3 像素）
-            border = 3
-            for dx in range(-border, border + 1):
-                for dy in range(-border, border + 1):
-                    if dx != 0 or dy != 0:
-                        draw.text((current_x + dx, y + dy), char, font=font, fill="black")
-                        
-            # 繪製主體白字
-            draw.text((current_x, y), char, font=font, fill="white")
+            # 先收集這一字元的所有線條段落 (x1, y1, x2, y2)
+            lines = []
+            if char == '/':
+                lines.append((cx, y + num_h, cx + num_w, y))
+            else:
+                # 依數字畫出對應的像素筆畫
+                n = int(char)
+                if n in: # 上
+                    lines.append((cx, y, cx + num_w, y))
+                if n in: # 右上
+                    lines.append((cx + num_w, y, cx + num_w, y + num_h // 2))
+                if n in: # 右下
+                    lines.append((cx + num_w, y + num_h // 2, cx + num_w, y + num_h))
+                if n in: # 下
+                    lines.append((cx, y + num_h, cx + num_w, y + num_h))
+                if n in: # 左下
+                    lines.append((cx, y + num_h // 2, cx, y + num_h))
+                if n in: # 左上
+                    lines.append((cx, y, cx, y + num_h // 2))
+                if n in: # 中
+                    lines.append((cx, y + num_h // 2, cx + num_w, y + num_h // 2))
+
+            # 繪製黑邊（在底下畫一圈粗黑色線條）
+            for x1, y1, x2, y2 in lines:
+                draw.line([(x1, y1), (x2, y2)], fill="black", width=thick + 4)
+                
+            # 繪製主體白字（在正中間疊加白色線條）
+            for x1, y1, x2, y2 in lines:
+                draw.line([(x1, y1), (x2, y2)], fill="white", width=thick)
 
     out_io = io.BytesIO()
     img.save(out_io, format="JPEG", quality=95, dpi=(300, 300))
