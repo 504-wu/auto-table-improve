@@ -98,51 +98,54 @@ def resize_and_compress_image(image_bytes, date_str, is_from_exif):
         img = img.resize((target_pixel_w, target_pixel_h), Image.Resampling.LANCZOS)
 
     # 標準化尺寸後，固定大小的字體
-    if not is_from_exif:
+     if not is_from_exif:
         draw = ImageDraw.Draw(img)
         w, h = img.size  # w=945, h=726
         
-        # 固定每個數字的幾何規格
-        num_w = 16  # 每個數字的物理像素寬度
-        num_h = 36  # 每個數字的物理像素高度
-        thick = 4   # 數字筆畫粗細（4像素，極粗顯眼）
-        spacing = 8 # 數字之間的間距
+        # 🚨【字體外觀大小定死】
+        num_w = 24  # 每個數字的物理像素寬度 (拉寬到 24 像素，字體會非常有分量)
+        num_h = 44  # 每個數字的物理像素高度 (拉高到 44 像素)
+        thick = 5   # 數字筆畫粗細 (5像素，超粗超清楚)
+        spacing = 10 # 數字與數字之間的間距
         
-        # 靠右下角對齊的起點 X
-        start_x = w - (len(date_str) * (num_w + spacing)) - 30
-        y = h - num_h - 35  # 距離底部 35 像素
+        # 靠右下角對齊的起點 X 座標
+        start_x = w - (len(date_str) * (num_w + spacing)) - 40
+        y = h - num_h - 40  # 距離底部 40 像素
         
-        # 七段顯示器幾何線條定義
+        # 正向一個字一個字直接畫在照片上
         for i, char in enumerate(date_str):
-            cx = start_x + i * (num_w + spacing)
+            cx = start_x + (i * (num_w + spacing))
             
-            # 先收集這一字元的所有線條段落 (x1, y1, x2, y2)
+            # 建立此字元的線條清單
             lines = []
-            if char == '/':
+            if char == "/":
+                # 畫斜線
                 lines.append((cx, y + num_h, cx + num_w, y))
             else:
-                # 依數字畫出對應的像素筆畫
-                n = int(char)
-                if n in: # 上
+                # 🚨【安全字串比對法】完全不使用中括號，防範傳輸被吃代碼
+                s = str(char)
+                
+                # 判斷哪些數字需要繪製對應位置的筆畫
+                if s in "02356789": # 上橫線
                     lines.append((cx, y, cx + num_w, y))
-                if n in: # 右上
+                if s in "01234789": # 右上直線
                     lines.append((cx + num_w, y, cx + num_w, y + num_h // 2))
-                if n in: # 右下
+                if s in "013456789": # 右下直線
                     lines.append((cx + num_w, y + num_h // 2, cx + num_w, y + num_h))
-                if n in: # 下
+                if s in "0235689": # 下橫線
                     lines.append((cx, y + num_h, cx + num_w, y + num_h))
-                if n in: # 左下
+                if s in "0268": # 左下直線
                     lines.append((cx, y + num_h // 2, cx, y + num_h))
-                if n in: # 左上
+                if s in "045689": # 左上直線
                     lines.append((cx, y, cx, y + num_h // 2))
-                if n in: # 中
+                if s in "2345689": # 中間橫線
                     lines.append((cx, y + num_h // 2, cx + num_w, y + num_h // 2))
 
-            # 繪製黑邊（在底下畫一圈粗黑色線條）
+            # 1. 畫底層超黑邊 (外加粗 5 像素，確保任何背景都看得到)
             for x1, y1, x2, y2 in lines:
-                draw.line([(x1, y1), (x2, y2)], fill="black", width=thick + 4)
+                draw.line([(x1, y1), (x2, y2)], fill="black", width=thick + 5)
                 
-            # 繪製主體白字（在正中間疊加白色線條）
+            # 2. 畫上層正白字 (核心粗度 5 像素)
             for x1, y1, x2, y2 in lines:
                 draw.line([(x1, y1), (x2, y2)], fill="white", width=thick)
 
