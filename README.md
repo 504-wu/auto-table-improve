@@ -19,7 +19,7 @@
 - word.py：相片中介資料解析、影像壓縮裁切、Word XML 表格精細排版及多工互動式網頁的一體化主要程式碼。
 
 執行成果
-<img width="777" height="482" alt="執行成果(截圖)" src="https://github.com/user-attachments/assets/d35bd4e8-8e1b-4c40-ad02-11bb4bacfc86" />
+<img width="878" height="962" alt="執行成果(截圖)" src="https://github.com/user-attachments/assets/24123690-26b4-4b46-91c8-5621f5396ae4" />
 
 # Streamlit 網頁測試網址
 - https://usesoeasy.streamlit.app/
