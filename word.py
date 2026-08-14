@@ -5,7 +5,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.table import WD_TABLE_ALIGNMENT, WD_ALIGN_VERTICAL
 from docx.oxml import OxmlElement, parse_xml
 from docx.oxml.ns import nsdecls, qn
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+from PIL import Image
 from PIL.ExifTags import TAGS
 import pillow_heif
 import io
@@ -15,19 +15,11 @@ from datetime import datetime
 # 註冊 HEIC 格式支援
 pillow_heif.register_heif_opener()
 
-# 初始化 session_state
-if "uploaded_photos_list" not in st.session_state:
-    st.session_state.uploaded_photos_list = []
-
 # -----------------------------------------
 # 照片處理與日期讀取
 # -----------------------------------------
 def get_photo_date(image_bytes, file_name):
-    """
-    從照片的 EXIF 資訊讀取拍攝日期。
-    傳回值: (date_str, is_from_exif)
-    is_from_exif 為 True 代表是原生相機時間；False 代表是從檔名解析或預設今天。
-    """
+    """從照片的 EXIF 資訊讀取拍攝日期，若無則嘗試檔名，皆無則採今天"""
     try:
         image = Image.open(io.BytesIO(image_bytes))
         exif = image._getexif()
@@ -37,140 +29,101 @@ def get_photo_date(image_bytes, file_name):
                 if decoded == "DateTimeOriginal" or decoded == "DateTime":
                     # EXIF 標準格式 YYYY:MM:DD HH:MM:SS
                     date_str = value.split()[0].replace(":", "/")
-                    return date_str, True
+                    return date_str
     except Exception:
         pass
     
     # 解析 YYYYMMDD 或 YYYY-MM-DD
     for fmt in ["%Y%m%d", "%Y-%m-%d", "%Y/%m/%d"]:
         try:
+            # 比對並取前面部分
             clean_name = "".join(filter(lambda ch: ch.isdigit() or ch in "-/", file_name))
             if len(clean_name) >= 8:
                 dt = datetime.strptime(clean_name[:10], fmt)
-                return dt.strftime("%Y/%m/%d"), False
+                return dt.strftime("%Y/%m/%d")
         except Exception:
             continue
             
-    return datetime.today().strftime("%Y/%m/%d"), False
+    # 預設日期
+    return datetime.today().strftime("%Y/%m/%d")
 
-def resize_and_compress_image(image_bytes, date_str, is_from_exif):
+def resize_and_compress_image(image_bytes):
     """
-    處理照片尺寸與浮水印：
+    限制照片尺寸比例：寬度 8.0cm、高度 6.15cm。
+    採用置中裁切保有需求比例，並使用 300 DPI 確保不模糊。
     """
-    raw_img = Image.open(io.BytesIO(image_bytes))
+    img = Image.open(io.BytesIO(image_bytes))
     
-    # 自動讀取手機 EXIF 的旋轉資訊並將照片轉正
-    img = ImageOps.exif_transpose(raw_img)
-    
+    # 轉 RGB 避免相容性問題
     if img.mode in ("RGBA", "P"):
         img = img.convert("RGB")
         
-    # 定義格子標準規格
-    target_pixel_w = 945  # 8.0cm 對應像素
+    # 寬高比例 = 8.0 / 6.15 
     target_ratio = 8.0 / 6.15
-    target_pixel_h = 726  # 726 像素 (6.15cm，安全高度)
-    
     img_w, img_h = img.size
+    current_ratio = img_w / img_h
     
-    # 先裁剪縮小照片
-    if img_w < img_h:
-        new_w = target_pixel_w
-        new_h = int(img_h * (target_pixel_w / img_w))
-        img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
-        if new_h > target_pixel_h:
-            offset_y = (new_h - target_pixel_h) // 2
-            img = img.crop((0, offset_y, target_pixel_w, offset_y + target_pixel_h))
-    else:
-        current_ratio = img_w / img_h
-        if current_ratio > target_ratio:
-            crop_w = int(target_ratio * img_h)
-            offset = (img_w - crop_w) // 2
-            img = img.crop((offset, 0, img_w - offset, img_h))
-        elif current_ratio < target_ratio:
-            crop_h = int(img_w / target_ratio)
-            offset = (img_h - crop_h) // 2
-            img = img.crop((0, offset, img_w, img_h - offset))
-        img = img.resize((target_pixel_w, target_pixel_h), Image.Resampling.LANCZOS)
-
-    # 使用字串幾何線條直接產生字體
-    if not is_from_exif:
-        draw = ImageDraw.Draw(img)
-        w, h = img.size  # w=945, h=726
+    # 置中裁切，讓照片不變形且填滿大格子
+    if current_ratio > target_ratio:
+        # 裁切左右
+        new_w = int(target_ratio * img_h)
+        offset = (img_w - new_w) // 2
+        img = img.crop((offset, 0, img_w - offset, img_h))
+    elif current_ratio < target_ratio:
+        # 裁切上下
+        new_h = int(img_w / target_ratio)
+        offset = (img_h - new_h) // 2
+        img = img.crop((0, offset, img_w, img_h - offset))
         
-        num_w = 15   # 數字的像素寬度
-        num_h = 35   # 數字的像素高度
-        thick = 4    # 數字筆畫粗細
-        spacing = 8 # 數字間距
-        
-        # 右下角的 X 座標起點
-        start_x = w - (len(date_str) * (num_w + spacing)) - 40
-        y = h - num_h - 40 
-    
-        for i, char in enumerate(date_str):
-            cx = start_x + (i * (num_w + spacing))
-            
-            # 建立此字元的線條
-            lines = []
-            if char == "/":
-                lines.append((cx, y + num_h, cx + num_w, y))
-            else:
-                s = str(char)
-                
-                # 判斷哪些數字需要辨識並繪製對應位置的筆畫
-                if s in "02356789": # 上橫線
-                    lines.append((cx, y, cx + num_w, y))
-                if s in "01234789": # 右上直線
-                    lines.append((cx + num_w, y, cx + num_w, y + num_h // 2))
-                if s in "013456789": # 右下直線
-                    lines.append((cx + num_w, y + num_h // 2, cx + num_w, y + num_h))
-                if s in "0235689": # 下橫線
-                    lines.append((cx, y + num_h, cx + num_w, y + num_h))
-                if s in "0268": # 左下直線
-                    lines.append((cx, y + num_h // 2, cx, y + num_h))
-                if s in "045689": # 左上直線
-                    lines.append((cx, y, cx, y + num_h // 2))
-                if s in "2345689": # 中間橫線
-                    lines.append((cx, y + num_h // 2, cx + num_w, y + num_h // 2))
-
-            # 畫底層黑邊
-            for x1, y1, x2, y2 in lines:
-                draw.line([(x1, y1), (x2, y2)], fill="black", width=thick + 4)
-                
-            # 畫上層白字
-            for x1, y1, x2, y2 in lines:
-                draw.line([(x1, y1), (x2, y2)], fill="white", width=thick)
-
+    # 指定 300 DPI 高印刷畫質
     out_io = io.BytesIO()
     img.save(out_io, format="JPEG", quality=95, dpi=(300, 300))
     out_io.seek(0)
     return out_io
 
+
 # -----------------------------------------
 # 固定欄寬與不拆頁
 # -----------------------------------------
 def set_cell_width(cell, width_cm):
+    """固定單一儲存格寬度"""
     tcPr = cell._tc.get_or_add_tcPr()
     tcW = OxmlElement('w:tcW')
-    tcW.set(qn('w:w'), str(int(width_cm * 567)))
+    tcW.set(qn('w:w'), str(int(width_cm * 567))) # 1 cm = 567 twips
     tcW.set(qn('w:type'), 'dxa')
     tcPr.append(tcW)
 
 def set_row_cant_split(row):
+    """設定表格列不列開 (CantSplit)"""
     trPr = row._tr.get_or_add_trPr()
     trPr.append(parse_xml(f'<w:cantSplit {nsdecls("w")}/>'))
 
 def set_row_height(row, height_cm):
+    """設定表格列固定高度"""
     trPr = row._tr.get_or_add_trPr()
     trHeight = OxmlElement('w:trHeight')
     trHeight.set(qn('w:val'), str(int(height_cm * 567)))
-    trHeight.set(qn('w:hRule'), 'exact')
+    trHeight.set(qn('w:hRule'), 'exact') # exact 代表固定高度
     trPr.append(trHeight)
+
+def set_cell_margins(cell, top=100, bottom=100, left=150, right=150):
+    """設定儲存格內邊距"""
+    tcPr = cell._tc.get_or_add_tcPr()
+    tcMar = OxmlElement('w:tcMar')
+    for m, val in [('top', top), ('bottom', bottom), ('left', left), ('right', right)]:
+        node = OxmlElement(f'w:{m}')
+        node.set(qn('w:w'), str(val))
+        node.set(qn('w:type'), 'dxa')
+        tcMar.append(node)
+    tcPr.append(tcMar)
 
 # -----------------------------------------
 # 建立 Word 文件
 # -----------------------------------------
 def create_report(grouped_photos):
     doc = docx.Document()
+    
+    # 設定頁邊距、不溢出
     sections = doc.sections
     for section in sections:
         section.top_margin = Cm(1.2)
@@ -178,6 +131,7 @@ def create_report(grouped_photos):
         section.left_margin = Cm(2.2)
         section.right_margin = Cm(2.2)
     
+    # 預設字型為標楷體
     style = doc.styles['Normal']
     style.font.name = '標楷體'
     style.element.rPr.get_or_add_rFonts().set(qn('w:hint'), 'eastAsia')
@@ -189,73 +143,80 @@ def create_report(grouped_photos):
         photos = grouped_photos[date_str]
         total_photos = len(photos)
         
+        # 6 張照片為一頁
         for page_idx in range(0, max(1, total_photos), 6):
             if date_idx > 0 or page_idx > 0:
-                doc.add_page_break()
+                doc.add_page_break() # 不同日期或超過6張時建立新頁面
                 
+            # 頁面標題
             title = doc.add_paragraph()
             title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            # 移除多餘段落間距
             title.paragraph_format.space_before = Pt(0)
             title.paragraph_format.space_after = Pt(6)
-            run = title.add_run(f"監造報表 ({date_str})")
+            run = title.add_run(f"監造報表")
             run.bold = True
             run.font.size = Pt(16)
             
+            # 建立 6 列 x 2 欄的表格
             table = doc.add_table(rows=6, cols=2)
             table.alignment = WD_TABLE_ALIGNMENT.CENTER
             table.style = 'Table Grid'
             
+            # 當前這頁插入的照片（最多6張）
             page_photos = photos[page_idx:page_idx + 6]
             
+            # 建立 2 欄並排，排序為大格-小格-..以此類推
             for block_idx in range(3):
-                r_big = block_idx * 2
-                r_small = block_idx * 2 + 1
+                r_big = block_idx * 2      # 0, 2, 4 列是大格
+                r_small = block_idx * 2 + 1  # 1, 3, 5 列是小格
                 
                 row_big = table.rows[r_big]
                 row_small = table.rows[r_small]
                 
+                # 設定精確高度、防網頁裂開
                 set_row_height(row_big, 6.6)
                 set_row_height(row_small, 0.8)
                 set_row_cant_split(row_big)
                 set_row_cant_split(row_small)
                 
+                # 處理左欄 (c=0) 與 右欄 (c=1)
                 for c_idx in range(2):
                     cell_big = row_big.cells[c_idx]
                     cell_small = row_small.cells[c_idx]
                     
+                    # 固定寬度 8cm
                     set_cell_width(cell_big, 8.0)
                     set_cell_width(cell_small, 8.0)
                     
+                    # 垂直置中
                     cell_big.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
                     cell_small.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
                     
+                    # 順序：左上(0)->右上(1)->左中(2)->右中(3)->左下(4)->右下(5)
                     photo_pos = block_idx * 2 + c_idx
                     
+                    # 填入大格（照片）
                     p_para = cell_big.paragraphs[0]
                     p_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
                     p_para.paragraph_format.space_before = Pt(0)
                     p_para.paragraph_format.space_after = Pt(0)
                     
+                    if photo_pos < len(page_photos):
+                        p_bytes = page_photos[photo_pos]
+                        compressed_io = resize_and_compress_image(p_bytes)
+                        run_img = p_para.add_run()
+                        run_img.add_picture(compressed_io, width=Cm(8.0))
+                    else:
+                        # 沒照片時，留空並維持預設段落置中
+                        p_para.add_run("")
+                        
+                    # 填入小格 (自訂文字)
                     s_para = cell_small.paragraphs[0]
                     s_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
                     s_para.paragraph_format.space_before = Pt(0)
                     s_para.paragraph_format.space_after = Pt(0)
-                    
-                    if photo_pos < len(page_photos):
-                        photo_data = page_photos[photo_pos]
-                        # 輸入日期與 EXIF 來源進行縮放
-                        compressed_io = resize_and_compress_image(
-                            photo_data['bytes'], 
-                            photo_data['date'], 
-                            photo_data['is_from_exif']
-                        )
-                        run_img = p_para.add_run()
-                        run_img.add_picture(compressed_io, width=Cm(8.0), height=Cm(6.15))
-                        
-                        s_para.add_run(photo_data.get('note', ''))
-                    else:
-                        p_para.add_run("")
-                        s_para.add_run("") 
+                    s_para.add_run("") 
 
     doc_io = io.BytesIO()
     doc.save(doc_io)
@@ -265,99 +226,49 @@ def create_report(grouped_photos):
 # -----------------------------------------
 # Streamlit 介面設計
 # -----------------------------------------
-st.set_page_config(page_title="監造報表", page_icon="📝", layout="wide")
+st.set_page_config(page_title="監造報表", page_icon="📝")
+
 st.title("📝 監造報表")
-st.caption("照片自動依日期分類，會自己旋轉跟增加時間喔~~")
+st.caption("上傳照片自動依日期分類，並導出符合規範的 Word 報表。")
 
-# 初始化
-if "uploader_key" not in st.session_state:
-    st.session_state.uploader_key = 0
-if "uploaded_photos_list" not in st.session_state:
-    st.session_state.uploaded_photos_list = []
-if "delete_idx" not in st.session_state:
-    st.session_state.delete_idx = None
-
-# 處理單張刪除邏輯
-if st.session_state.delete_idx is not None:
-    idx_to_del = st.session_state.delete_idx
-    if 0 <= idx_to_del < len(st.session_state.uploaded_photos_list):
-        st.session_state.uploaded_photos_list.pop(idx_to_del)
-    st.session_state.delete_idx = None  # 重置刪除狀態
-    st.rerun()
-
-# 照片上傳 
+# 上傳照片按鈕
 uploaded_files = st.file_uploader(
     "上傳照片", 
     type=["jpg", "jpeg", "png", "heic"], 
-    accept_multiple_files=True, 
-    key=f"uploader_{st.session_state.uploader_key}"
+    accept_multiple_files=True
 )
 
 if uploaded_files:
+    st.info(f"成功上傳 {len(uploaded_files)} 張照片，整理中不要急")
+    
+    # 依照日期分類
+    grouped_photos = {}
+    
     for f in uploaded_files:
         file_bytes = f.read()
-        # 檢查是否重複上傳
-        if not any(d['name'] == f.name for d in st.session_state.uploaded_photos_list):
-            # 呼叫日期解析函式
-            photo_date, is_from_exif = get_photo_date(file_bytes, f.name)
-            st.session_state.uploaded_photos_list.append({
-                "name": f.name,
-                "bytes": file_bytes,
-                "date": photo_date,
-                "is_from_exif": is_from_exif, 
-                "note": ""
-            })
-    st.session_state.uploader_key += 1
-    st.rerun()
-
-# 照片管理與顯示
-if st.session_state.uploaded_photos_list:
-    st.success(f"目前有 {len(st.session_state.uploaded_photos_list)} 張照片")
-    
-    if st.button("🗑️ 一鍵刪除", type="primary"):
-        st.session_state.uploaded_photos_list = []
-        st.rerun()
+        # 讀取日期
+        photo_date = get_photo_date(file_bytes, f.name)
         
-    st.write("---")
-    st.subheader("📸 已上傳的照片，會有預覽喔）")
+        if photo_date not in grouped_photos:
+            grouped_photos[photo_date] = []
+        grouped_photos[photo_date].append(file_bytes)
+        
+    st.success("🎉 照片時間分類中！")
     
-    # 建立網格
-    cols = st.columns(4)
-    
-    # 負責畫面渲染與刪除標記
-    for idx, photo in enumerate(st.session_state.uploaded_photos_list):
-        with cols[idx % 4]:
-            source_tag = " [相機時間]" if photo['is_from_exif'] else " [手動/檔名解析-已蓋時間章]"
-            st.image(photo['bytes'], caption=f"{photo['name']}\n{photo['date']}{source_tag}", use_container_width=True)
-            
-            # 點擊刪除時，將索引存入 session_state 並重新渲染
-            if st.button(f"❌ 刪除", key=f"del_{idx}"):
-                st.session_state.delete_idx = idx
-                st.rerun()
-
-    st.write("---")
-    
-    # 資料分類與報表生成
-    if st.button("📝 要確定是這些照片喔，按下後圖片才會下一步喔"):
-        with st.spinner("努力產生 Word 檔，敢吵我直接當機"):
-            # 按按鈕才整理最新的照片進行分組，避免中途刪除導致照片遺失
-            grouped_photos = {}
-            for photo in st.session_state.uploaded_photos_list:
-                p_date = photo['date']
-                if p_date not in grouped_photos:
-                    grouped_photos[p_date] = []
-                grouped_photos[p_date].append(photo)
-            
-            #  Word 生成函式（create_report）會處理照片縮放
-            doc_file = create_report(grouped_photos)
-            
-            st.download_button(
-                label="📥 此為偷懶小幫手.docx",
-                data=doc_file,
-                file_name=f"監造報表_{datetime.now().strftime('%Y%m%d')}.docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            )
+    # 顯示結果
+    for d, p_list in grouped_photos.items():
+        st.write(f"📅 **{d}**：共 {len(p_list)} 張照片")
+        
+    # 產生Word 檔案
+    with st.spinner("努力產生 Word 檔，敢吵我直接當機"):
+        word_file = create_report(grouped_photos)
+        
+    # 下載按鈕
+    st.download_button(
+        label="📥 此為偷懶小幫手",
+        data=word_file,
+        file_name=f"監造報表_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx",
+        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
 else:
-    st.info("請上傳照片再給我按，這種事還要我提醒。")
-
-
+    st.warning("請上傳照片再給我按，這種事還要我提醒。")
