@@ -269,7 +269,7 @@ def create_report(grouped_photos):
 # -----------------------------------------
 # Streamlit 前端網頁介面
 # -----------------------------------------
-st.title("📸 偷懶小幫手()")
+st.title("偷懶小幫手 ฅ^•ﻌ•^ฅ")
 st.caption("⚠️ 提醒：還是要使用時間相機app才會有浮水印喔！")
 
 if "uploaded_photos_list" not in st.session_state:
