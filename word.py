@@ -315,15 +315,22 @@ if uploaded_files:
 # 圖片管理與編輯介面
 if st.session_state.uploaded_photos_list:
     
-    # 一鍵刪除功能鍵
+    # 一鍵刪除功能鍵清除日期與文字
     col_btn1, col_btn2 = st.columns([1, 3])
     with col_btn1:
-        if st.button("🗑️ 刪除全部照片", type="secondary", use_container_width=True):
+        if st.button("🗑️ 一鍵刪除", type="secondary", use_container_width=True):
+            for idx in range(len(st.session_state.uploaded_photos_list)):
+                date_key = f"date_input_{idx}"
+                desc_key = f"desc_input_{idx}"
+                if date_key in st.session_state:
+                    del st.session_state[date_key]
+                if desc_key in st.session_state:
+                    del st.session_state[desc_key]
+            
+            # 2. 清除照片資料與重置上傳鍵
             st.session_state.uploaded_photos_list = []
             st.session_state.uploader_key += 1
             st.rerun()
-            
-    st.write("---")
 
     # 防呆:點擊別處或按 Enter 時才存檔
     def update_photo_data(index, field_key, session_key):
