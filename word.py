@@ -418,7 +418,7 @@ if st.session_state.uploaded_photos_list:
         
         # 獲取今天的日期及時間字串，避免 import 衝突
         import datetime
-        current_date_str = datetime.datetime.now().strftime('%Y%m%d%H%M')
+        current_date_str = datetime.datetime.now().strftime('%Y%m%d')
         
         st.download_button(
             label="🚀 按下去後就可以節省很多時間喔",
