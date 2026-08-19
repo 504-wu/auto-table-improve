@@ -106,7 +106,7 @@ def resize_and_compress_image(image_bytes, date_str, is_from_exif, print_waterma
         w, h = img.size
         draw = ImageDraw.Draw(img)
         
-        font_size = 24
+        font_size = 80
         
         try:
             font = ImageFont.truetype("msjh.ttc", font_size)  # 微軟正黑體
@@ -120,15 +120,15 @@ def resize_and_compress_image(image_bytes, date_str, is_from_exif, print_waterma
         except AttributeError:
             text_w, text_h = draw.textsize(date_str, font=font)
             
-        margin_x = 35  # 固定的右邊距
-        margin_y = 35  # 固定的底邊距
+        margin_x = 40  # 固定的右邊距
+        margin_y = 40  # 固定的底邊距
         
         x = w - text_w - margin_x
         y = h - text_h - margin_y
         
         # 計算黑底方框範圍
-        padding_x = 10
-        padding_y = 6
+        padding_x = 24
+        padding_y = 16
         
         box_x1 = x - padding_x
         box_y1 = y - padding_y
