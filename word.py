@@ -106,29 +106,31 @@ def resize_and_compress_image(image_bytes, date_str, is_from_exif, print_waterma
         w, h = img.size
         draw = ImageDraw.Draw(img)
         
-        font_size = 80
+        font_size = 50
         
         try:
             font = ImageFont.truetype("msjh.ttc", font_size)  # 微軟正黑體
         except IOError:
-            font = ImageFont.load_default()
-                
+            try:
+                font = ImageFont.load_default(size=font_size)
+            except TypeError:    
+                font = ImageFont.load_default()
         try:
             text_bbox = draw.textbbox((0, 0), date_str, font=font)
             text_w = text_bbox[2] - text_bbox[0]
             text_h = text_bbox[3] - text_bbox[1]
-        except AttributeError:
-            text_w, text_h = draw.textsize(date_str, font=font)
-            
-        margin_x = 40  # 固定的右邊距
-        margin_y = 40  # 固定的底邊距
+        except (AttributeError, TypeError):
+            text_w = len(date_str) * int(font_size * 0.6)
+            text_h = font_size
         
+        margin_x = 45  # 固定的右邊距
+        margin_y = 45  # 固定的底邊距
         x = w - text_w - margin_x
         y = h - text_h - margin_y
         
         # 計算黑底方框範圍
-        padding_x = 24
-        padding_y = 16
+        padding_x = 20
+        padding_y = 12
         
         box_x1 = x - padding_x
         box_y1 = y - padding_y
@@ -139,7 +141,9 @@ def resize_and_compress_image(image_bytes, date_str, is_from_exif, print_waterma
         draw.rectangle([box_x1, box_y1, box_x2, box_y2], fill="black")
                     
         # 在黑框正中央繪製主體白色文字
-        draw.text((x, y), date_str, font=font, fill="white")
+        for dx in range(-1, 2):
+            for dy in range(-1, 2):
+                draw.text((x, y), date_str, font=font, fill="white")
     
     out_io = io.BytesIO()
     img.save(out_io, format="JPEG", quality=95, dpi=(300, 300))
