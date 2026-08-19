@@ -96,8 +96,8 @@ def resize_and_compress_image(image_bytes, date_str, is_from_exif, print_waterma
     if print_watermark and date_str.strip() != "":
         draw = ImageDraw.Draw(img)
         w, h = img.size
-        font_size = 42 
-        
+        font_size = max(24, int(min(w, h) * 0.04))
+        border_thickness = max(2, int(font_size * 0.05))
         try:
             font = ImageFont.truetype("msjh.ttc", font_size)  
         except IOError:
