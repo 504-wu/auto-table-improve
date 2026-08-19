@@ -92,7 +92,7 @@ def resize_and_compress_image(image_bytes, date_str, is_from_exif, print_waterma
             img = img.crop((0, offset, img_w, img_h - offset))
         img = img.resize((target_pixel_w, target_pixel_h), Image.Resampling.LANCZOS)
 
-    
+    box_x1, box_y1, box_x2, box_y2 = 0, 0, 0, 0
     # 使用者手動決定是否蓋上時間浮水印
     if print_watermark and date_str.strip() != "":
         target_width = 1200
@@ -125,9 +125,7 @@ def resize_and_compress_image(image_bytes, date_str, is_from_exif, print_waterma
         
         margin_x = 50  # 固定的右邊距
         margin_y = 50  # 固定的底邊距
-        x = w - text_w - margin_x
-        y = h - text_h - margin_y
-        
+
         # 計算黑底方框範圍
         padding_x = 18
         padding_y = 12
