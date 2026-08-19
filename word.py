@@ -130,10 +130,10 @@ def resize_and_compress_image(image_bytes, date_str, is_from_exif, print_waterma
         padding_x = 18
         padding_y = 12
         
-        box_x1 = box_x2 - text_w - (padding_x * 2)
-        box_y1 = box_y2 - text_h - (padding_y * 2)
         box_x2 = w - margin_x
         box_y2 = h - margin_y
+        box_x1 = box_x2 - text_w - (padding_x * 2)
+        box_y1 = box_y2 - text_h - (padding_y * 2)
         
         # 繪製固定大小的純黑背景方框
         draw.rectangle([box_x1, box_y1, box_x2, box_y2], fill="black")
