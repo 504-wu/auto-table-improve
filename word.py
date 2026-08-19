@@ -123,27 +123,28 @@ def resize_and_compress_image(image_bytes, date_str, is_from_exif, print_waterma
             text_w = len(date_str) * int(font_size * 0.6)
             text_h = font_size
         
-        margin_x = 45  # 固定的右邊距
-        margin_y = 45  # 固定的底邊距
+        margin_x = 50  # 固定的右邊距
+        margin_y = 50  # 固定的底邊距
         x = w - text_w - margin_x
         y = h - text_h - margin_y
         
         # 計算黑底方框範圍
-        padding_x = 16
-        padding_y = 10
+        padding_x = 18
+        padding_y = 12
         
-        box_x1 = x - padding_x
-        box_y1 = y - padding_y
-        box_x2 = x + text_w + padding_x
-        box_y2 = y + text_h + padding_y
+        box_x1 = box_x2 - text_w - (padding_x * 2)
+        box_y1 = box_y2 - text_h - (padding_y * 2)
+        box_x2 = w - margin_x
+        box_y2 = h - margin_y
         
         # 繪製固定大小的純黑背景方框
         draw.rectangle([box_x1, box_y1, box_x2, box_y2], fill="black")
                     
         # 在黑框正中央繪製主體白色文字
-        for dx in range(-1, 2):
-            for dy in range(-1, 2):
-                draw.text((x, y), date_str, font=font, fill="white")
+        x = box_x1 + padding_x
+        y = box_y1 + padding_y + 2 
+        
+        draw.text((x, y), date_str, font=font, fill="white")
     
     out_io = io.BytesIO()
     img.save(out_io, format="JPEG", quality=95, dpi=(300, 300))
