@@ -144,7 +144,7 @@ if print_watermark and date_str.strip() != "":
     out_io = io.BytesIO()
     img.save(out_io, format="JPEG", quality=95, dpi=(300, 300))
     out_io.seek(0)
-    return out_io
+return out_io
 
 # -----------------------------------------
 # 固定欄寬與不拆頁 (Word 工具函式)
