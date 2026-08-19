@@ -92,59 +92,59 @@ def resize_and_compress_image(image_bytes, date_str, is_from_exif, print_waterma
             img = img.crop((0, offset, img_w, img_h - offset))
         img = img.resize((target_pixel_w, target_pixel_h), Image.Resampling.LANCZOS)
 
-    # 使用者手動決定是否蓋上時間浮水印
-    # 使用者手動決定是否蓋上時間浮水印
-if print_watermark and date_str.strip() != "":
-    target_width = 1200
-    if img.size[0] > target_width:
-        # 按原比例計算新高度
-        target_height = int(img.size[1] * (target_width / img.size[0]))
-        # 縮放圖片
-        img = img.resize((target_width, target_height), Image.Resampling.LANCZOS)
-
-    # 重新取得縮放後的寬高
-    w, h = img.size
-    draw = ImageDraw.Draw(img)
     
-    font_size = 24
+    # 使用者手動決定是否蓋上時間浮水印
+    if print_watermark and date_str.strip() != "":
+        target_width = 1200
+        if img.size[0] > target_width:
+            # 按原比例計算新高度
+            target_height = int(img.size[1] * (target_width / img.size[0]))
+            # 縮放圖片
+            img = img.resize((target_width, target_height), Image.Resampling.LANCZOS)
     
-    try:
-        font = ImageFont.truetype("msjh.ttc", font_size)  # 微軟正黑體
-    except IOError:
-        font = ImageFont.load_default()
-            
-    try:
-        text_bbox = draw.textbbox((0, 0), date_str, font=font)
-        text_w = text_bbox[2] - text_bbox[0]
-        text_h = text_bbox[3] - text_bbox[1]
-    except AttributeError:
-        text_w, text_h = draw.textsize(date_str, font=font)
+        # 重新取得縮放後的寬高
+        w, h = img.size
+        draw = ImageDraw.Draw(img)
         
-    margin_x = 35  # 固定的右邊距
-    margin_y = 35  # 固定的底邊距
-    
-    x = w - text_w - margin_x
-    y = h - text_h - margin_y
-    
-    # 計算黑底方框範圍
-    padding_x = 10
-    padding_y = 6
-    
-    box_x1 = x - padding_x
-    box_y1 = y - padding_y
-    box_x2 = x + text_w + padding_x
-    box_y2 = y + text_h + padding_y
-    
-    # 繪製固定大小的純黑背景方框
-    draw.rectangle([box_x1, box_y1, box_x2, box_y2], fill="black")
+        font_size = 24
+        
+        try:
+            font = ImageFont.truetype("msjh.ttc", font_size)  # 微軟正黑體
+        except IOError:
+            font = ImageFont.load_default()
                 
-    # 在黑框正中央繪製主體白色文字
-    draw.text((x, y), date_str, font=font, fill="white")
-
-    out_io = io.BytesIO()
-    img.save(out_io, format="JPEG", quality=95, dpi=(300, 300))
-    out_io.seek(0)
-return out_io
+        try:
+            text_bbox = draw.textbbox((0, 0), date_str, font=font)
+            text_w = text_bbox[2] - text_bbox[0]
+            text_h = text_bbox[3] - text_bbox[1]
+        except AttributeError:
+            text_w, text_h = draw.textsize(date_str, font=font)
+            
+        margin_x = 35  # 固定的右邊距
+        margin_y = 35  # 固定的底邊距
+        
+        x = w - text_w - margin_x
+        y = h - text_h - margin_y
+        
+        # 計算黑底方框範圍
+        padding_x = 10
+        padding_y = 6
+        
+        box_x1 = x - padding_x
+        box_y1 = y - padding_y
+        box_x2 = x + text_w + padding_x
+        box_y2 = y + text_h + padding_y
+        
+        # 繪製固定大小的純黑背景方框
+        draw.rectangle([box_x1, box_y1, box_x2, box_y2], fill="black")
+                    
+        # 在黑框正中央繪製主體白色文字
+        draw.text((x, y), date_str, font=font, fill="white")
+    
+        out_io = io.BytesIO()
+        img.save(out_io, format="JPEG", quality=95, dpi=(300, 300))
+        out_io.seek(0)
+    return out_io
 
 # -----------------------------------------
 # 固定欄寬與不拆頁 (Word 工具函式)
