@@ -93,41 +93,53 @@ def resize_and_compress_image(image_bytes, date_str, is_from_exif, print_waterma
         img = img.resize((target_pixel_w, target_pixel_h), Image.Resampling.LANCZOS)
 
     # 使用者手動決定是否蓋上時間浮水印
-    if print_watermark and date_str.strip() != "":
-        draw = ImageDraw.Draw(img)
-        w, h = img.size
+    # 使用者手動決定是否蓋上時間浮水印
+if print_watermark and date_str.strip() != "":
+    target_width = 1200
+    if img.size[0] > target_width:
+        # 按原比例計算新高度
+        target_height = int(img.size[1] * (target_width / img.size[0]))
+        # 縮放圖片
+        img = img.resize((target_width, target_height), Image.Resampling.LANCZOS)
+
+    # 重新取得縮放後的寬高
+    w, h = img.size
+    draw = ImageDraw.Draw(img)
     
-        font_size = max(32, int(min(w, h) * 0.04))
-        border_thickness = max(2, int(font_size * 0.06))
+    font_size = 24
+    
+    try:
+        font = ImageFont.truetype("msjh.ttc", font_size)  # 微軟正黑體
+    except IOError:
+        font = ImageFont.load_default()
+            
+    try:
+        text_bbox = draw.textbbox((0, 0), date_str, font=font)
+        text_w = text_bbox[2] - text_bbox[0]
+        text_h = text_bbox[3] - text_bbox[1]
+    except AttributeError:
+        text_w, text_h = draw.textsize(date_str, font=font)
         
-        try:
-            font = ImageFont.truetype("cour.ttf", font_size) 
-        except IOError:
-            try:
-                font = ImageFont.truetype("consola.ttf", font_size)
-            except IOError:
-                font = ImageFont.load_default()
-
-        try:
-            text_bbox = draw.textbbox((0, 0), date_str, font=font)
-            text_w = text_bbox[2] - text_bbox[0]
-            text_h = text_bbox[3] - text_bbox[1]
-        except AttributeError:
-            text_w, text_h = draw.textsize(date_str, font=font)
-
-        margin_x = int(w * 0.05)
-        margin_y = int(h * 0.05)
-        
-        x = w - text_w - margin_x
-        y = h - text_h - margin_y
-        
-        border_thickness = 3
-        for dx in range(-border_thickness, border_thickness + 1):
-            for dy in range(-border_thickness, border_thickness + 1):
-                if dx != 0 or dy != 0:
-                    draw.text((x + dx, y + dy), date_str, font=font, fill="black")
-                    
-        draw.text((x, y), date_str, font=font, fill="white")
+    margin_x = 35  # 固定的右邊距
+    margin_y = 35  # 固定的底邊距
+    
+    x = w - text_w - margin_x
+    y = h - text_h - margin_y
+    
+    # 計算黑底方框範圍
+    padding_x = 10
+    padding_y = 6
+    
+    box_x1 = x - padding_x
+    box_y1 = y - padding_y
+    box_x2 = x + text_w + padding_x
+    box_y2 = y + text_h + padding_y
+    
+    # 繪製固定大小的純黑背景方框
+    draw.rectangle([box_x1, box_y1, box_x2, box_y2], fill="black")
+                
+    # 在黑框正中央繪製主體白色文字
+    draw.text((x, y), date_str, font=font, fill="white")
 
     out_io = io.BytesIO()
     img.save(out_io, format="JPEG", quality=95, dpi=(300, 300))
