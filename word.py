@@ -130,7 +130,7 @@ def resize_and_compress_image(image_bytes, date_str, is_from_exif, print_waterma
         
         # 計算黑底方框範圍
         padding_x = 16
-        padding_y = 8
+        padding_y = 10
         
         box_x1 = x - padding_x
         box_y1 = y - padding_y
