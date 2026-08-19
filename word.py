@@ -106,7 +106,7 @@ def resize_and_compress_image(image_bytes, date_str, is_from_exif, print_waterma
         w, h = img.size
         draw = ImageDraw.Draw(img)
         
-        font_size = 50
+        font_size = 32
         
         try:
             font = ImageFont.truetype("msjh.ttc", font_size)  # 微軟正黑體
@@ -129,8 +129,8 @@ def resize_and_compress_image(image_bytes, date_str, is_from_exif, print_waterma
         y = h - text_h - margin_y
         
         # 計算黑底方框範圍
-        padding_x = 20
-        padding_y = 12
+        padding_x = 16
+        padding_y = 8
         
         box_x1 = x - padding_x
         box_y1 = y - padding_y
