@@ -16,33 +16,30 @@ from datetime import datetime
 # 註冊 HEIC 格式支援
 pillow_heif.register_heif_opener()
 
-# 初始化 
+# 初始化 session_state
 if "uploaded_photos_list" not in st.session_state:
     st.session_state.uploaded_photos_list = []
+    
+if "uploader_key" not in st.session_state:
+    st.session_state.uploader_key = 0
 
 # -----------------------------------------
 # 照片處理與日期讀取
 # -----------------------------------------
 def get_photo_date(image_bytes, file_name):
-    """
-    從照片的 EXIF 資訊讀取拍攝日期。
-    傳回值: (date_str, is_from_exif)
-    is_from_exif 為 True 代表是原生相機時間；False 代表是從檔名解析或預設今天。
-    """
+    """ 從照片的 EXIF 資訊或檔名讀取拍攝日期 """
     try:
         image = Image.open(io.BytesIO(image_bytes))
         exif = image._getexif()
         if exif:
             for tag, value in exif.items():
                 decoded = TAGS.get(tag, tag)
-                if decoded == "DateTimeOriginal" or decoded == "DateTime":
-                    # EXIF 標準格式 YYYY:MM:DD HH:MM:SS
+                if decoded in ("DateTimeOriginal", "DateTime"):
                     date_str = value.split()[0].replace(":", "/")
                     return date_str, True
     except Exception:
         pass
     
-    # 若正規表達式 (Regex) 解析原始檔名中的 YYYYMMDD
     match = re.search(r"(\d{4})[-_ /]?(\d{2})[-_ /]?(\d{2})", file_name)
     if match:
         try:
@@ -52,34 +49,30 @@ def get_photo_date(image_bytes, file_name):
         except Exception:
             pass
             
-    # 預設今天日期
     return datetime.today().strftime("%Y/%m/%d"), False
 
-def resize_and_compress_image(image_bytes, date_str, is_from_exif):
+def resize_and_compress_image(image_bytes, date_str, is_from_exif, print_watermark):
     """
     處理照片尺寸與浮水印：
     - 自動修正手機拍攝時的 EXIF 旋轉問題。
     - 橫式照片：置中裁切填滿。
     - 直式照片：等比例縮放且限制高度不超出儲存格。
-    - 調整尺寸後：若無原生時間，在右下角新增時間文字。
+    - 當 print_watermark 為 True 且日期不為空時，才會在右下角繪製時間文字。
     """
     raw_img = Image.open(io.BytesIO(image_bytes))
-    
-    # 讀取手機 EXIF 的旋轉資訊並將照片轉正
     img = ImageOps.exif_transpose(raw_img)
     
     if img.mode in ("RGBA", "P"):
         img = img.convert("RGB")
         
-    target_pixel_w = 945  # 8.0cm 對應pixel (300 DPI)
+    target_pixel_w = 945  # 8.0cm 對應 pixel (300 DPI)
     target_ratio = 8.0 / 6.15
-    target_pixel_h = int(target_pixel_w / target_ratio)  # 726 像素 (約 6.15cm，安全高度)
+    target_pixel_h = int(target_pixel_w / target_ratio)  # 約 726 像素 (6.15cm 安全高度)
     
     img_w, img_h = img.size
     
-    # 先進行裁切與基礎縮放 
+        # 縮放控制：直式照片限制最高為表格安全高度，絕對不超出格線
     if img_w < img_h:
-        # 直式照片縮小至固定格子內，但不要進行裁剪
         ratio_w = target_pixel_w / img_w
         ratio_h = target_pixel_h / img_h
         scale_ratio = min(ratio_w, ratio_h)
@@ -87,7 +80,7 @@ def resize_and_compress_image(image_bytes, date_str, is_from_exif):
         new_h = int(img_h * scale_ratio)
         img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
     else:
-        # 橫式照片照舊：置中裁切並縮放
+        # 橫式照片：置中裁切並縮放
         current_ratio = img_w / img_h
         if current_ratio > target_ratio:
             crop_w = int(target_ratio * img_h)
@@ -99,23 +92,20 @@ def resize_and_compress_image(image_bytes, date_str, is_from_exif):
             img = img.crop((0, offset, img_w, img_h - offset))
         img = img.resize((target_pixel_w, target_pixel_h), Image.Resampling.LANCZOS)
 
-    # 在標準化尺寸後，繪製固定大小的字體
-    if not is_from_exif:
+    # 使用者手動決定是否蓋上時間浮水印
+    if print_watermark and date_str.strip() != "":
         draw = ImageDraw.Draw(img)
         w, h = img.size
-        
-        #  300 DPI 下，10 Pt 的字體大小固定為 42 pixels
         font_size = 42 
         
         try:
-            font = ImageFont.truetype("msjh.ttc", font_size)  # 微軟正黑體
+            font = ImageFont.truetype("msjh.ttc", font_size)  
         except IOError:
             try:
                 font = ImageFont.truetype("Arial.ttf", font_size)
             except IOError:
                 font = ImageFont.load_default()
 
-        # 計算文字寬高
         try:
             text_bbox = draw.textbbox((0, 0), date_str, font=font)
             text_w = text_bbox[2] - text_bbox[0]
@@ -123,18 +113,15 @@ def resize_and_compress_image(image_bytes, date_str, is_from_exif):
         except AttributeError:
             text_w, text_h = draw.textsize(date_str, font=font)
             
-        # 右下角留邊
         x = w - text_w - 20
         y = h - text_h - 20
         
-        # 繪製黑邊
         border_thickness = 3
         for dx in range(-border_thickness, border_thickness + 1):
             for dy in range(-border_thickness, border_thickness + 1):
                 if dx != 0 or dy != 0:
                     draw.text((x + dx, y + dy), date_str, font=font, fill="black")
                     
-        # 繪製主體白字
         draw.text((x, y), date_str, font=font, fill="white")
 
     out_io = io.BytesIO()
@@ -143,7 +130,7 @@ def resize_and_compress_image(image_bytes, date_str, is_from_exif):
     return out_io
 
 # -----------------------------------------
-# 固定欄寬與不拆頁
+# 固定欄寬與不拆頁 (Word 工具函式)
 # -----------------------------------------
 def set_cell_width(cell, width_cm):
     tcPr = cell._tc.get_or_add_tcPr()
@@ -233,44 +220,47 @@ def create_report(grouped_photos):
                     p_para.paragraph_format.space_before = Pt(0)
                     p_para.paragraph_format.space_after = Pt(0)
                     
+                    t_para = cell_small.paragraphs[0]
+                    t_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    t_para.paragraph_format.space_before = Pt(0)
+                    t_para.paragraph_format.space_after = Pt(0)
+                    
                     if photo_pos < len(page_photos):
                         photo_data = page_photos[photo_pos]
                         
-                        # 讀取圖片以確認橫直式比例，並精準插入 Word
-                        img_obj = Image.open(io.BytesIO(photo_data["bytes"]))
-                        img_w, img_h = img_obj.size
+                        # 根據勾選狀態以及輸入日期，決定是否在圖片上加上浮水印
+                        processed_img_io = resize_and_compress_image(
+                            photo_data["raw_bytes"] or photo_data.get("bytes"), 
+                            photo_data["date"], 
+                            False,
+                            photo_data["print_watermark"]
+                        )
+                        p_run = p_para.add_run()
                         
-                        run_img = p_para.add_run()
-                        if img_w < img_h:
-                            # 直式照片：縮小至固定格子內（限制高度不超標）
-                            run_img.add_picture(io.BytesIO(photo_data["bytes"]), height=Cm(6.15))
+                        # 判斷直橫式： 高度限制縮小放入儲存格；橫式則固定
+                        temp_img = Image.open(processed_img_io)
+                        w, h = temp_img.size
+                        if w < h:
+                            # 直式照片等比例縮小，高度設為 6.15 cm 
+                            p_run.add_picture(processed_img_io, height=Cm(6.15))
                         else:
-                            # 橫式照片：維持原程式縮放（限制寬度填滿）
-                            run_img.add_picture(io.BytesIO(photo_data["bytes"]), width=Cm(8.0))
-                            
-                        # 填入說明文字
-                        s_para = cell_small.paragraphs[0]
-                        s_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                        s_para.paragraph_format.space_before = Pt(0)
-                        s_para.paragraph_format.space_after = Pt(0)
+                            # 橫式照片固定 8 cm 
+                            p_run.add_picture(processed_img_io, width=Cm(8.0))
                         
-                        run_desc = s_para.add_run(photo_data["description"])
-                        run_desc.font.name = '標楷體'
-                        run_desc.font.size = Pt(11)
-                    else:
-                        s_para = cell_small.paragraphs[0]
-                        s_para.paragraph_format.space_after = Pt(0)
+                        t_run = t_para.add_run(photo_data["description"])
+                        t_run.font.size = Pt(10)
                         
-    doc_io = io.BytesIO()
-    doc.save(doc_io)
-    doc_io.seek(0)
-    return doc_io
+    out_doc_io = io.BytesIO()
+    doc.save(out_doc_io)
+    out_doc_io.seek(0)
+    return out_doc_io
+
 
 # -----------------------------------------
 # Streamlit 前端網頁介面
 # -----------------------------------------
 st.title("偷懶小幫手 ฅ^•ﻌ•^ฅ")
-st.caption("⚠️ 提醒：還是要使用時間相機app才會有浮水印喔！")
+st.caption("⚠️ 提醒：使用時間相機app是最好的喔！雖然還是可以幫你打印時間")
 
 if "uploaded_photos_list" not in st.session_state:
     st.session_state.uploaded_photos_list = []
@@ -297,19 +287,21 @@ if uploaded_files:
             
             # 如果不是從真實 EXIF 抓到的，或者抓到的是今天(錯誤)日期，直接判定為「未偵測到日期」
             if not is_from_exif:
-                # 略過浮水印：傳入空字串或 None
-                processed_io = resize_and_compress_image(file_bytes, date_str="", is_from_exif=False)
-                # 網頁上的欄位改為空白，或讓使用者手動輸入
+                # 預設不壓浮水印
+                processed_io = resize_and_compress_image(file_bytes, date_str="", is_from_exif=False, print_watermark=False)
                 default_display_date = "" 
             else:
-                # 有抓到正確 EXIF 正常壓印
-                processed_io = resize_and_compress_image(file_bytes, date_str, is_from_exif)
+                # 有抓到正確 EXIF，一樣預設不壓浮水印
+                # 
+                processed_io = resize_and_compress_image(file_bytes, date_str, is_from_exif, print_watermark=False)
                 default_display_date = date_str
 
+            # 將初始值儲存在 session_state 中
             st.session_state.uploaded_photos_list.append({
                 "name": f.name,
                 "bytes": processed_io.getvalue(),
                 "display_date": default_display_date,
+                "print_watermark": False,  # 呈現的勾選框預設為關閉
                 "description": ""
             })
 
@@ -347,9 +339,7 @@ if st.session_state.uploaded_photos_list:
     
     for d_str in sorted_groups:
         
-        # -----------------------------------------------------------------
-        # 沒有確定的時間時，直接呈現不變動
-        # -----------------------------------------------------------------
+        # 沒有確定的時間時，直接不變動
         if d_str == "":
             st.markdown("請手動輸入時間（日期判定錯誤/未偵測到日期）")
             
@@ -362,10 +352,20 @@ if st.session_state.uploaded_photos_list:
                     st.text_input(
                         "補充拍攝日期_自己手動吧~", 
                         value=photo["display_date"], 
-                        placeholder="輸入日期（例：YYYY/MM/DD）",
+                        placeholder="輸入日期（例：YYYY/MM/DD or MM/DD）",
                         key=date_key,
                         on_change=update_photo_data,
                         args=(original_idx, "display_date", date_key)
+                    )
+                    
+                    # 打印時間浮水印勾選框，維持既有頁面形式
+                    wm_key = f"wm_input_{original_idx}"
+                    st.checkbox(
+                        "打印時間浮水印",
+                        value=photo["print_watermark"],
+                        key=wm_key,
+                        on_change=update_photo_data,
+                        args=(original_idx, "print_watermark", wm_key)
                     )
                     
                     desc_key = f"desc_input_{original_idx}"
@@ -378,9 +378,7 @@ if st.session_state.uploaded_photos_list:
                     )
                 st.write("---")
                 
-        # -----------------------------------------------------------------
-        # 有確定的時間，使用 st.expander 可縮放功能
-        # -----------------------------------------------------------------
+        # 有確定的時間，就會有縮放功能
         else:
             photo_count = len(grouped_ui[d_str])
             # 使用 expander 建立可折疊區塊，預設設為 False
@@ -400,6 +398,16 @@ if st.session_state.uploaded_photos_list:
                             args=(original_idx, "display_date", date_key)
                         )
                         
+                        # 打印時間浮水印勾選框，維持既有頁面形式
+                        wm_key = f"wm_input_{original_idx}"
+                        st.checkbox(
+                            "打印時間浮水印",
+                            value=photo["print_watermark"],
+                            key=wm_key,
+                            on_change=update_photo_data,
+                            args=(original_idx, "print_watermark", wm_key)
+                        )
+                        
                         desc_key = f"desc_input_{original_idx}"
                         st.text_input(
                             "照片說明", 
@@ -413,10 +421,15 @@ if st.session_state.uploaded_photos_list:
     # 封裝分組數據傳給報表生成函數
     final_grouped_photos = {}
     for photo in st.session_state.uploaded_photos_list:
+        
+        # 安全抓取圖片
+        img_data = photo.get("raw_bytes") or photo.get("bytes") or photo.get("preview_bytes")
+        
         report_photo_node = {
             "name": photo["name"],
-            "bytes": photo["bytes"], 
+            "raw_bytes": img_data,          
             "date": photo["display_date"], 
+            "print_watermark": photo["print_watermark"],
             "description": photo["description"]
         }
         final_grouped_photos.setdefault(photo["display_date"], []).append(report_photo_node)
@@ -437,4 +450,4 @@ if st.session_state.uploaded_photos_list:
             use_container_width=True
         )
     except Exception as e:
-        st.error(f"產生 Word 報表失敗，給我檢查請處資料有沒有好嗎 :(：{e}")
+        st.error(f"產生 Word 報表失敗，給我檢查清楚資料有沒有好嗎 :(：{e}")
