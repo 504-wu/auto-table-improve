@@ -141,9 +141,9 @@ def resize_and_compress_image(image_bytes, date_str, is_from_exif, print_waterma
         # 在黑框正中央繪製主體白色文字
         draw.text((x, y), date_str, font=font, fill="white")
     
-        out_io = io.BytesIO()
-        img.save(out_io, format="JPEG", quality=95, dpi=(300, 300))
-        out_io.seek(0)
+    out_io = io.BytesIO()
+    img.save(out_io, format="JPEG", quality=95, dpi=(300, 300))
+    out_io.seek(0)
     return out_io
 
 # -----------------------------------------
