@@ -139,8 +139,8 @@ def resize_and_compress_image(image_bytes, date_str, is_from_exif, print_waterma
         draw.rectangle([box_x1, box_y1, box_x2, box_y2], fill="black")
                     
         # 在黑框正中央繪製主體白色文字
-        x = box_x1 + padding_x
-        y = box_y1 + padding_y + 2 
+        x = box_x1 + ((box_x2 - box_x1) - text_w) // 2
+        y = box_y1 + ((box_y2 - box_y1) - text_h) // 2
         
         draw.text((x, y), date_str, font=font, fill="white")
     
