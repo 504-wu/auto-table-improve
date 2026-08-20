@@ -51,7 +51,7 @@ def get_photo_date(image_bytes, file_name):
             
     return datetime.today().strftime("%Y/%m/%d"), False
 
-def resize_and_compress_image(image_bytes, date_str, is_from_exif, print_watermark):
+def resize_and_compress_image(image_bytes, date_str, is_from_exif=False, print_watermark=False):
     """
     處理照片尺寸與浮水印：
     - 自動修正手機拍攝時的 EXIF 旋轉問題。
@@ -106,7 +106,7 @@ def resize_and_compress_image(image_bytes, date_str, is_from_exif, print_waterma
         w, h = img.size
         draw = ImageDraw.Draw(img)
         
-        font_size = 32
+        font_size = 35
         
         try:
             font = ImageFont.truetype("msjh.ttc", font_size)  # 微軟正黑體
@@ -278,6 +278,7 @@ def create_report(grouped_photos):
 # -----------------------------------------
 st.title("偷懶小幫手 ฅ^•ﻌ•^ฅ")
 st.caption("⚠️ 提醒：使用時間相機app是最好的喔！雖然還是可以幫你打印時間")
+st.caption("⚠️ 建議操作順序： 1️⃣ 先確保時間正確並歸類。2️⃣ 點開照片縮排並敘述照片文字。3️⃣ 全部或個別選擇是否打印時間浮水印。4️⃣下載 Word 報表。")
 
 if "uploaded_photos_list" not in st.session_state:
     st.session_state.uploaded_photos_list = []
@@ -305,12 +306,11 @@ if uploaded_files:
             # 如果不是從真實 EXIF 抓到的，或者抓到的是今天(錯誤)日期，直接判定為「未偵測到日期」
             if not is_from_exif:
                 # 預設不壓浮水印
-                processed_io = resize_and_compress_image(file_bytes, date_str="", is_from_exif=False, print_watermark=False)
+                processed_io = resize_and_compress_image(file_bytes, date_str="", print_watermark=False)
                 default_display_date = "" 
             else:
                 # 有抓到正確 EXIF，一樣預設不壓浮水印
-                # 
-                processed_io = resize_and_compress_image(file_bytes, date_str, is_from_exif, print_watermark=False)
+                processed_io = resize_and_compress_image(file_bytes, date_str, print_watermark=False)
                 default_display_date = date_str
 
             # 將初始值儲存在 session_state 中
@@ -332,10 +332,18 @@ if st.session_state.uploaded_photos_list:
             for idx in range(len(st.session_state.uploaded_photos_list)):
                 date_key = f"date_input_{idx}"
                 desc_key = f"desc_input_{idx}"
+                wm_key = f"wm_input_{idx}"
                 if date_key in st.session_state:
                     del st.session_state[date_key]
                 if desc_key in st.session_state:
                     del st.session_state[desc_key]
+                if wm_key in st.session_state:
+                    del st.session_state[wm_key]
+            
+            # 清除群組全選的 Key 狀態
+            for key in list(st.session_state.keys()):
+                if key.startswith("group_wm_"):
+                    del st.session_state[key]
             
             # 2. 清除照片資料與重置上傳鍵
             st.session_state.uploaded_photos_list = []
@@ -345,6 +353,16 @@ if st.session_state.uploaded_photos_list:
     # 防呆:點擊別處或按 Enter 時才存檔
     def update_photo_data(index, field_key, session_key):
         st.session_state.uploaded_photos_list[index][field_key] = st.session_state[session_key]
+
+    # 全選連動的回呼函式 (Callback)
+    def update_group_watermarks(d_key, photo_indices):
+        """ 當群組全選框狀態改變時，同步更新該組內所有照片的狀態 """
+        target_state = st.session_state[d_key]
+        for original_idx in photo_indices:
+            # 同步更新 session_state 內的 widget 狀態
+            st.session_state[f"wm_input_{original_idx}"] = target_state
+            # 同步更新底層數據清單
+            st.session_state.uploaded_photos_list[original_idx]["print_watermark"] = target_state
 
     # 分組資料
     grouped_ui = {}
@@ -356,9 +374,11 @@ if st.session_state.uploaded_photos_list:
     
     for d_str in sorted_groups:
         
-        # 沒有確定的時間時，直接不變動
+
+        # 沒有確定的時間時（不進行 expander 縮排）
+        
         if d_str == "":
-            st.markdown("請手動輸入時間（日期判定錯誤/未偵測到日期）")
+            st.markdown(" 請手動輸入時間（日期判定錯誤/未偵測到日期）")
             
             for original_idx, photo in grouped_ui[d_str]:
                 col1, col2 = st.columns([1, 3])  
@@ -374,33 +394,30 @@ if st.session_state.uploaded_photos_list:
                         on_change=update_photo_data,
                         args=(original_idx, "display_date", date_key)
                     )
-                    
-                    # 打印時間浮水印勾選框，維持既有頁面形式
-                    wm_key = f"wm_input_{original_idx}"
-                    st.checkbox(
-                        "打印時間浮水印",
-                        value=photo["print_watermark"],
-                        key=wm_key,
-                        on_change=update_photo_data,
-                        args=(original_idx, "print_watermark", wm_key)
-                    )
-                    
-                    desc_key = f"desc_input_{original_idx}"
-                    st.text_input(
-                        "照片說明", 
-                        value=photo["description"], 
-                        key=desc_key,
-                        on_change=update_photo_data,
-                        args=(original_idx, "description", desc_key)
-                    )
                 st.write("---")
                 
-        # 有確定的時間，就會有縮放功能
+        # 有確定的時間（使用 expander 縮排，並加入全選連動功能）
+
         else:
             photo_count = len(grouped_ui[d_str])
-            # 使用 expander 建立可折疊區塊，預設設為 False
+            # 取出這一個日期群組內所有照片的原始索引值，供全選 Callback 使用
+            current_group_indices = [idx for idx, _ in grouped_ui[d_str]]
+            
+            # 使用 expander 建立可折疊區塊，預設設為 false，讓使用者可以自行展開
             with st.expander(f"📅 日期：{d_str} (共 {photo_count} 張照片)", expanded=False):
                 
+                # 建立群組全選時間浮水印控制鍵
+                group_wm_key = f"group_wm_{d_str}"
+                
+                st.checkbox(
+                    "勾選全部並打印時間浮水印",
+                    key=group_wm_key,
+                    on_change=update_group_watermarks,
+                    args=(group_wm_key, current_group_indices)
+                )
+                st.markdown("<hr style='margin: 10px 0px;' />", unsafe_allow_html=True)
+                
+                # 縮排顯示該日期下的所有照片與其獨立控制項
                 for original_idx, photo in grouped_ui[d_str]:
                     col1, col2 = st.columns([1, 3])
                     with col1:
@@ -415,7 +432,6 @@ if st.session_state.uploaded_photos_list:
                             args=(original_idx, "display_date", date_key)
                         )
                         
-                        # 打印時間浮水印勾選框，維持既有頁面形式
                         wm_key = f"wm_input_{original_idx}"
                         st.checkbox(
                             "打印時間浮水印",
@@ -429,6 +445,7 @@ if st.session_state.uploaded_photos_list:
                         st.text_input(
                             "照片說明", 
                             value=photo["description"], 
+                            placeholder="輸入照片說明", 
                             key=desc_key,
                             on_change=update_photo_data,
                             args=(original_idx, "description", desc_key)
