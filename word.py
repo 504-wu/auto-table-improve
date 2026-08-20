@@ -198,7 +198,7 @@ def create_report(grouped_photos):
             title.alignment = WD_ALIGN_PARAGRAPH.CENTER
             title.paragraph_format.space_before = Pt(0)
             title.paragraph_format.space_after = Pt(6)
-            run = title.add_run(f"監造報表 ({date_str})")
+            run = title.add_run(f"監造報表")
             run.bold = True
             run.font.size = Pt(16)
             
